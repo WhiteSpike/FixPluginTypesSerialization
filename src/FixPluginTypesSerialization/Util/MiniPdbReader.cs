@@ -13,7 +13,7 @@ namespace FixPluginTypesSerialization.Util
     internal class MiniPdbReader
     {
 #if NETSTANDARD2_0_OR_GREATER
-        private static readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromMinutes(5) };
+        private static readonly HttpClient _httpClient = new(new HttpClientHandler {AllowAutoRedirect = false}) { Timeout = TimeSpan.FromMinutes(5) };
 #else
         private static readonly WebClientWithTimeout _webClient = new();
 #endif
@@ -35,12 +35,21 @@ namespace FixPluginTypesSerialization.Util
 
                 Log.Info("Status Code : " + httpResponse.StatusCode);
 
-                if (httpResponse.StatusCode != System.Net.HttpStatusCode.OK)
+                switch(httpResponse.StatusCode)
                 {
-                    return null;
+                    case System.Net.HttpStatusCode.OK:
+                    {
+                        return httpResponse.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult();
+                    }
+                    case System.Net.HttpStatusCode.MovedPermanently:
+                    case System.Net.HttpStatusCode.Redirect:
+                    case System.Net.HttpStatusCode.TemporaryRedirect:
+                    {
+                        Uri redirectUrl = httpResponse.Headers.Location;
+                        return DownloadFromWeb(redirectUrl.OriginalString);
+                    }
+                    default: return null;
                 }
-
-                return httpResponse.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult();
             }
             catch (TaskCanceledException)
             {
